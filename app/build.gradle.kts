@@ -20,6 +20,17 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Native libusb probe is intentionally limited to the ARM Android phones under test.
+    ndk {
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    }
+
+    externalNativeBuild {
+      cmake {
+        cppFlags += "-std=c++17"
+      }
+    }
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -55,6 +66,13 @@ android {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
+  externalNativeBuild {
+    cmake {
+      path = file("src/main/cpp/CMakeLists.txt")
+      version = "3.22.1"
+    }
+  }
+
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
