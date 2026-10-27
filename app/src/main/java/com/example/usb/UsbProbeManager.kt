@@ -212,8 +212,8 @@ class UsbProbeManager(
                     val config = device.getConfiguration(ci)
                     log(
                         LogLevel.INFO, "USB-DESC",
-                        "CONFIG index=$ci id=${config.id} value=${config.configurationValue} " +
-                            "interfaces=${config.interfaceCount} attributes=0x${config.attributes.toString(16).uppercase()} " +
+                        "CONFIG index=$ci id=${config.id} " +
+                            "interfaces=${config.interfaceCount} " +
                             "maxPower=${config.maxPower}mA"
                     )
                     for (ii in 0 until config.interfaceCount) {
