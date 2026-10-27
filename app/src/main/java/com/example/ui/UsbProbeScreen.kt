@@ -177,6 +177,30 @@ fun UsbProbeScreen(
                 }
             }
 
+            OutlinedButton(
+                onClick = { viewModel.runLibUsbProbe() },
+                enabled = !isTesting && selectedDevice != null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("btn_libusb_probe"),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = DarkSurface,
+                    contentColor = TextPrimary
+                ),
+                border = ButtonDefaults.outlinedButtonBorder.copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(AmberWarning)
+                )
+            ) {
+                Text(
+                    text = "LIBUSB: WRAP + DETACH/CLAIM",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.4.sp
+                )
+            }
+
             // Quick Actions Strip
             Row(
                 modifier = Modifier.fillMaxWidth(),
