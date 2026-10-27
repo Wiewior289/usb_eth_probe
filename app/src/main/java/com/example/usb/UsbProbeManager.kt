@@ -199,7 +199,50 @@ class UsbProbeManager(
                     device.deviceClass
                 )
 
-                // Inspect interfaces
+                // Descriptor inventory: configurations are alternatives, not simultaneously active.
+                // Log every configuration/interface/endpoint so we never mistake a vendor interface
+                // for the Ethernet data interface merely because it happens to expose Bulk IN/OUT.
+                log(
+                    LogLevel.INFO, "USB-DESC",
+                    "DEVICE path=${device.deviceName} VID=0x${String.format("%04X", device.vendorId)} " +
+                        "PID=0x${String.format("%04X", device.productId)} deviceClass=0x${device.deviceClass.toString(16).uppercase()} " +
+                        "activeApiInterfaceCount=${device.interfaceCount} configCount=${device.configurationCount}"
+                )
+                for (ci in 0 until device.configurationCount) {
+                    val config = device.getConfiguration(ci)
+                    log(
+                        LogLevel.INFO, "USB-DESC",
+                        "CONFIG index=$ci id=${config.id} value=${config.configurationValue} " +
+                            "interfaces=${config.interfaceCount} attributes=0x${config.attributes.toString(16).uppercase()} " +
+                            "maxPower=${config.maxPower}mA"
+                    )
+                    for (ii in 0 until config.interfaceCount) {
+                        val intf = config.getInterface(ii)
+                        val eps = (0 until intf.endpointCount).joinToString(" ") { ei ->
+                            val ep = intf.getEndpoint(ei)
+                            val dir = if (ep.direction == UsbConstants.USB_DIR_IN) "IN" else "OUT"
+                            val type = when (ep.type) {
+                                UsbConstants.USB_ENDPOINT_XFER_CONTROL -> "CTRL"
+                                UsbConstants.USB_ENDPOINT_XFER_ISOC -> "ISO"
+                                UsbConstants.USB_ENDPOINT_XFER_BULK -> "BULK"
+                                UsbConstants.USB_ENDPOINT_XFER_INT -> "INT"
+                                else -> "TYPE${ep.type}"
+                            }
+                            "$dir:$type:0x${String.format("%02X", ep.address)}(maxPacket=${ep.maxPacketSize})"
+                        }.ifEmpty { "(no endpoints)" }
+                        log(
+                            LogLevel.INFO, "USB-DESC",
+                            "  IFACE configIndex=$ci id=${intf.id} alt=${intf.alternateSetting} " +
+                                "class=0x${intf.interfaceClass.toString(16).uppercase().padStart(2, '0')} " +
+                                "subclass=0x${intf.interfaceSubclass.toString(16).uppercase().padStart(2, '0')} " +
+                                "protocol=0x${intf.interfaceProtocol.toString(16).uppercase().padStart(2, '0')} " +
+                                "endpoints=${intf.endpointCount}: $eps"
+                        )
+                    }
+                }
+
+                // UsbDevice.getInterface() exposes the interfaces available to the Android USB API
+                // for the device's active configuration. Keep this list separate from the full descriptor dump.
                 val interfaces = mutableListOf<UsbInterfaceInfo>()
                 for (i in 0 until device.interfaceCount) {
                     val iface = device.getInterface(i)
@@ -377,17 +420,15 @@ class UsbProbeManager(
             _verdict.value = _verdict.value.copy(fileDescriptor = fd)
         }
 
-        // Step 3: Find appropriate interface with Bulk endpoints
-        var selectedIface: UsbInterface? = null
-        var epIn: UsbEndpoint? = null
-        var epOut: UsbEndpoint? = null
-
-        // Priority 1: Check CDC Data interface or interface with bulk pair
+        // Step 3: enumerate candidates from the active configuration.
+        // Never auto-claim a vendor-specific (0xFF) interface just because it has a Bulk pair:
+        // Realtek/WCH devices expose vendor protocol interfaces alongside CDC network functions.
+        data class Candidate(val iface: UsbInterface, val input: UsbEndpoint, val output: UsbEndpoint)
+        val candidates = mutableListOf<Candidate>()
         for (i in 0 until device.interfaceCount) {
             val iface = device.getInterface(i)
             var curIn: UsbEndpoint? = null
             var curOut: UsbEndpoint? = null
-
             for (e in 0 until iface.endpointCount) {
                 val ep = iface.getEndpoint(e)
                 if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
@@ -395,12 +436,35 @@ class UsbProbeManager(
                     else if (ep.direction == UsbConstants.USB_DIR_OUT) curOut = ep
                 }
             }
-
             if (curIn != null && curOut != null) {
-                selectedIface = iface
-                epIn = curIn
-                epOut = curOut
-                break
+                candidates.add(Candidate(iface, curIn, curOut))
+                withContext(Dispatchers.Main) {
+                    log(
+                        LogLevel.INFO, "IFACE-CANDIDATE",
+                        "Candidate id=${iface.id} alt=${iface.alternateSetting} " +
+                            "class=0x${iface.interfaceClass.toString(16).uppercase().padStart(2, '0')} " +
+                            "subclass=0x${iface.interfaceSubclass.toString(16).uppercase().padStart(2, '0')} " +
+                            "protocol=0x${iface.interfaceProtocol.toString(16).uppercase().padStart(2, '0')} " +
+                            "Bulk IN=0x${String.format("%02X", curIn.address)} OUT=0x${String.format("%02X", curOut.address)}"
+                    )
+                }
+            }
+        }
+
+        // CDC Data (0x0A) is the only safe automatic candidate for this diagnostic pass.
+        // Vendor-specific (0xFF) candidates remain visible in logs but require an explicit protocol decision.
+        val chosen = candidates.firstOrNull { it.iface.interfaceClass == UsbConstants.USB_CLASS_CDC_DATA }
+        var selectedIface: UsbInterface? = chosen?.iface
+        var epIn: UsbEndpoint? = chosen?.input
+        var epOut: UsbEndpoint? = chosen?.output
+
+        withContext(Dispatchers.Main) {
+            if (chosen == null && candidates.isNotEmpty()) {
+                log(
+                    LogLevel.WARN, "IFACE",
+                    "Nie wybrano interfejsu automatycznie: są pary Bulk IN/OUT, ale żadna nie jest CDC Data (class 0x0A). " +
+                        "Kandydaci zostali tylko zinwentaryzowani; nie będę losowo claimować interfejsu vendor-specific."
+                )
             }
         }
 
@@ -429,12 +493,11 @@ class UsbProbeManager(
 
         if (!claimResult) {
             withContext(Dispatchers.Main) {
-                log(LogLevel.ERROR, "CLAIM", ">>> PORAŻKA: claimInterface zwróciło FALSE (-16 EBUSY)! <<<")
-                log(LogLevel.KERNEL, "KERNEL", "WYJAŚNIENIE: Systemowy sterownik jądra Androida (np. r8152, asix, cdc_ether) trzyma interfejs!")
-                log(LogLevel.KERNEL, "KERNEL", "Oznacza to, że kernel automatycznie przechwycił kartę jako urządzenie sieciowe 'eth0'.")
+                log(LogLevel.ERROR, "CLAIM", "claimInterface() zwróciło FALSE dla interfaceId=${selectedIface.id}, alt=${selectedIface.alternateSetting}. Android API nie ujawnia tu errno; -16/EBUSY NIE jest potwierdzone.")
+                log(LogLevel.WARN, "CLAIM", "Możliwe przyczyny obejmują konflikt z driverem, nieprawidłowy interfejs/konfigurację lub ograniczenie stosu USB. Ten wynik sam nie dowodzi, że kernel trzyma eth0.")
                 _verdict.value = _verdict.value.copy(
                     interfaceClaimed = false,
-                    kernelErrorClaim = -16
+                    kernelErrorClaim = null
                 )
             }
 
