@@ -1,0 +1,6 @@
+{
+  "name": "USB Eth Probe",
+  "description": "Industrial USB Ethernet FD extraction, claimInterface and raw bulk transfer diagnostic tool for Android USB Host.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
