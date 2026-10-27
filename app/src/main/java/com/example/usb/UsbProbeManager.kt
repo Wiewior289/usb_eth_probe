@@ -594,6 +594,91 @@ class UsbProbeManager(
     }
 
     /**
+     * Runs the isolated native libusb ownership experiment on the selected USB device.
+     * Android USB permission is still required; this does not bypass UsbManager.
+     */
+    fun runLibUsbProbe(targetDevice: UsbDevice? = _selectedDevice.value?.device) {
+        val device = targetDevice ?: run {
+            log(LogLevel.ERROR, "LIBUSB", "Nie wybrano urządzenia USB.")
+            return
+        }
+
+        if (!usbManager.hasPermission(device)) {
+            log(LogLevel.WARN, "LIBUSB", "Brak zgody Android USB; proszę o standardowe uprawnienie.")
+            requestUsbPermission(device) { granted, grantedDevice ->
+                if (granted) {
+                    scope.launch(Dispatchers.IO) { executeLibUsbProbe(grantedDevice) }
+                } else {
+                    log(LogLevel.ERROR, "LIBUSB", "Odmowa uprawnienia USB. libusb nie może ominąć zgody systemowej.")
+                }
+            }
+            return
+        }
+
+        scope.launch(Dispatchers.IO) { executeLibUsbProbe(device) }
+    }
+
+    private suspend fun executeLibUsbProbe(device: UsbDevice) {
+        withContext(Dispatchers.Main) {
+            stopSniffer()
+            closeActiveConnection()
+            log(LogLevel.INFO, "LIBUSB", "=== START NATYWNEGO TESTU LIBUSB ===")
+            log(
+                LogLevel.INFO, "LIBUSB",
+                "VID=0x${String.format("%04X", device.vendorId)} PID=0x${String.format("%04X", device.productId)} path=${device.deviceName}"
+            )
+            log(LogLevel.WARN, "LIBUSB", "Test próbuje detach/claim interfejsów 0 i 1. eth0 może chwilowo zniknąć.")
+        }
+
+        val connection = try {
+            usbManager.openDevice(device)
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                log(LogLevel.ERROR, "LIBUSB", "openDevice() wyjątek: ${e.javaClass.simpleName}: ${e.message}")
+            }
+            return
+        }
+
+        if (connection == null) {
+            withContext(Dispatchers.Main) {
+                log(LogLevel.ERROR, "LIBUSB", "UsbManager.openDevice() zwróciło null.")
+            }
+            return
+        }
+
+        activeConnection = connection
+        val fd = connection.fileDescriptor
+        withContext(Dispatchers.Main) {
+            log(LogLevel.INFO, "LIBUSB", "Android FD=$fd; natywna warstwa wykona dup(FD), aby zachować oryginalny uchwyt.")
+        }
+
+        try {
+            val report = LibUsbNative().probe(fd, true)
+            withContext(Dispatchers.Main) {
+                report.lineSequence().filter { it.isNotBlank() }.forEach { line ->
+                    val level = when {
+                        line.contains("FATAL") || line.contains("failed") -> LogLevel.ERROR
+                        line.contains("=-") || line.contains("NOT_SUPPORTED") || line.contains("BUSY") -> LogLevel.WARN
+                        else -> LogLevel.INFO
+                    }
+                    log(level, "LIBUSB-NATIVE", line)
+                }
+                log(LogLevel.SUCCESS, "LIBUSB", "=== KONIEC TESTU LIBUSB ===")
+                checkSystemEthernetInterface()
+            }
+        } catch (e: UnsatisfiedLinkError) {
+            withContext(Dispatchers.Main) {
+                log(LogLevel.ERROR, "LIBUSB", "Biblioteka usbprobe nie została załadowana: ${e.message}")
+                log(LogLevel.ERROR, "LIBUSB", "Sprawdź instalację NDK/CMake oraz wynik natywnej kompilacji APK.")
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                log(LogLevel.ERROR, "LIBUSB", "Test przerwany: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Diagnostic: Tests standard USB Control Transfer on Endpoint 0 (Device Descriptor)
      */
     fun testControlTransferDescriptor(conn: UsbDeviceConnection? = activeConnection) {
