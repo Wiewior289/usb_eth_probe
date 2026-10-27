@@ -415,7 +415,7 @@ class UsbProbeManager(
         val fd = connection.fileDescriptor
         withContext(Dispatchers.Main) {
             log(LogLevel.SUCCESS, "FD", ">>> SUKCES! Wyciągnięto File Descriptor: FD = $fd <<<")
-            log(LogLevel.INFO, "FD", "Ten FD ($fd) jest bezpośrednim uchwytem do usbfs (/dev/bus/usb/...).")
+            log(LogLevel.INFO, "FD", "FD pochodzi z UsbDeviceConnection; to uchwyt połączenia USB, nie identyfikator interfejsu. Sam numer FD nie mówi, który interfejs ani protokół obsłuży transfer.")
             log(LogLevel.INFO, "FD", "Można go przekazać do C/Go/libusb przez libusb_wrap_sys_device(ctx, $fd, &handle)!")
             _verdict.value = _verdict.value.copy(fileDescriptor = fd)
         }
@@ -470,7 +470,8 @@ class UsbProbeManager(
 
         if (selectedIface == null || epIn == null || epOut == null) {
             withContext(Dispatchers.Main) {
-                log(LogLevel.WARN, "IFACE", "Nie znaleziono interfejsu z klasyczną parą Bulk IN/OUT.")
+                log(LogLevel.WARN, "IFACE", "Brak bezpiecznie wybranego interfejsu CDC Data z parą Bulk IN/OUT.")
+                log(LogLevel.INFO, "IFACE", "Kandydaci vendor-specific, jeśli występują, pozostają nieclaimowani; testuję wyłącznie kanał kontrolny EP0.")
                 log(LogLevel.INFO, "IFACE", "Wykonywanie testu Device Descriptor na kanale kontrolnym (EP 0)...")
             }
             testControlTransferDescriptor(connection)
@@ -508,8 +509,7 @@ class UsbProbeManager(
             withContext(Dispatchers.Main) {
                 checkSystemEthernetInterface()
                 log(LogLevel.INFO, "ARCH", "WNIOSEK DLA ARCHITEKTURY PROJEKTU:")
-                log(LogLevel.INFO, "ARCH", "1. W userlandzie bez root sterownik jądra blokuje wywłaszczenie przez claimInterface.")
-                log(LogLevel.INFO, "ARCH", "2. ALE skoro kernel trzyma eth0, to transparentny bridge można zrealizować przez systemowy VpnService (tun0 <-> eth0) BEZ ROOT!")
+                log(LogLevel.INFO, "ARCH", "Wniosek ograniczony: Android odmówił claimInterface dla wskazanego interfejsu. Sam wynik nie identyfikuje errno ani przyczyny odmowy.")
                 _isTesting.value = false
             }
             return
@@ -519,7 +519,7 @@ class UsbProbeManager(
 
         withContext(Dispatchers.Main) {
             log(LogLevel.SUCCESS, "CLAIM", ">>> SUKCES: Interfejs przejęty pomyślnie (claimInterface = TRUE)! <<<")
-            log(LogLevel.SUCCESS, "CLAIM", "Kernel nie zablokował dostępu. Userland ma 100% bezpośredniej kontroli nad linią USB!")
+            log(LogLevel.INFO, "CLAIM", "Claim interfejsu się powiódł. Nie oznacza to jeszcze, że wybrano właściwy protokół Ethernet ani że surowe ramki będą interpretowane poprawnie.")
             _verdict.value = _verdict.value.copy(interfaceClaimed = true)
         }
 
