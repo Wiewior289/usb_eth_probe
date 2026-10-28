@@ -129,8 +129,6 @@ void descriptors(std::ostringstream& o, libusb_device* d) {
     o << "VID=0x" << std::hex << dd.idVendor << " PID=0x" << dd.idProduct
       << std::dec << " configurations=" << static_cast<int>(dd.bNumConfigurations) << "\n";
 
-    int active_config = -1;
-    rc(o, "get_configuration", libusb_get_configuration(nullptr, &active_config));
     // The active configuration descriptor is the authoritative source for the
     // interface/endpoint scan; do not confuse config index with bConfigurationValue.
     libusb_config_descriptor* c = nullptr;
