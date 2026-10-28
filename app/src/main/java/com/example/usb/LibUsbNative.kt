@@ -7,7 +7,7 @@ package com.example.usb
  * calling libusb_wrap_sys_device(), so libusb_close() cannot close Android's original FD.
  */
 class LibUsbNative {
-    external fun probe(fileDescriptor: Int, tryDetachAndClaim: Boolean): String
+    external fun runStage(fileDescriptor: Int, stage: Int): String
 
     companion object {
         init {
