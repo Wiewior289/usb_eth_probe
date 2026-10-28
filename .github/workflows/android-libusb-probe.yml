@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, diagnostics/descriptor-first]
   push:
-    branches: [experiment/libusb-android-probe]
+    branches: [experiment/libusb-android-probe, experiment/libusb-controlled-ecm]
 
 jobs:
   assemble-debug:
