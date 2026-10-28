@@ -178,27 +178,32 @@ fun UsbProbeScreen(
             }
 
             OutlinedButton(
-                onClick = { viewModel.runLibUsbProbe() },
+                onClick = { viewModel.runLibUsbStage(0) },
                 enabled = !isTesting && selectedDevice != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("btn_libusb_probe"),
+                modifier = Modifier.fillMaxWidth().height(46.dp).testTag("btn_libusb_s0"),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = DarkSurface,
-                    contentColor = TextPrimary
-                ),
-                border = ButtonDefaults.outlinedButtonBorder.copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(AmberWarning)
-                )
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = DarkSurface, contentColor = TextPrimary),
+                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(AmberWarning))
             ) {
-                Text(
-                    text = "LIBUSB: WRAP + DETACH/CLAIM",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.4.sp
-                )
+                Text("LIBUSB S0: READ ONLY / DESCRIPTORS", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("S1 CLAIM", "S2 DETACH", "S3 RX", "S4 TX").forEachIndexed { index, label ->
+                    OutlinedButton(
+                        onClick = { viewModel.runLibUsbStage(index + 1) },
+                        enabled = !isTesting && selectedDevice != null,
+                        modifier = Modifier.weight(1f).height(42.dp).testTag("btn_libusb_s${index + 1}"),
+                        shape = RoundedCornerShape(9.dp),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = DarkSurface, contentColor = TextPrimary),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.ui.graphics.SolidColor(if (index == 3) AmberWarning else DarkBorder)
+                        )
+                    ) {
+                        Text(label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
             }
 
             // Quick Actions Strip
