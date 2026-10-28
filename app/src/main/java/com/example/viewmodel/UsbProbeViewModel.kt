@@ -38,8 +38,8 @@ class UsbProbeViewModel(application: Application) : AndroidViewModel(application
         probeManager.runFullAutomatedTest()
     }
 
-    fun runLibUsbProbe() {
-        probeManager.runLibUsbProbe()
+    fun runLibUsbStage(stage: Int) {
+        probeManager.runLibUsbStage(stage)
     }
 
     fun testControlTransfer() {
